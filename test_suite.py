@@ -10,6 +10,7 @@ import json
 import boto3
 import sys
 import uuid
+import signal
 from decimal import Decimal
 
 # --- Configuración de Pruebas ---
@@ -56,6 +57,43 @@ class TestIntegracionServidor(unittest.TestCase):
     data_table = None
     test_session_uuid = str(uuid.uuid4())
     test_set_id = f"test-item-{test_session_uuid}"
+    
+    @staticmethod
+    def kill_port_processes(port):
+        """Busca y mata todos los procesos que usan el puerto especificado"""
+        try:
+            # Usar lsof para encontrar procesos que usen el puerto
+            result = subprocess.run(
+                ['lsof', '-ti', f':{port}'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                pids = result.stdout.strip().split('\n')
+                for pid_str in pids:
+                    try:
+                        pid = int(pid_str)
+                        print(f"  Matando proceso {pid} que usa el puerto {port}...")
+                        os.kill(pid, signal.SIGTERM)
+                        time.sleep(0.5)
+                        try:
+                            os.kill(pid, 0)  # Verificar si sigue vivo
+                            os.kill(pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    except (ValueError, ProcessLookupError, PermissionError):
+                        pass
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            # lsof no disponible o timeout, intentar con fuser
+            try:
+                subprocess.run(
+                    ['fuser', '-k', f'{port}/tcp'],
+                    capture_output=True,
+                    timeout=2
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
 
     @classmethod
     def setUpClass(cls):
@@ -87,7 +125,8 @@ class TestIntegracionServidor(unittest.TestCase):
         # --- Iniciar el servidor (Corrección: Sin -v y sin pipes) ---
         cls.server_process = subprocess.Popen(
             [PYTHON_EXE, SERVER_SCRIPT, '-p', str(TEST_PORT)], # Quitamos -v
-            text=True
+            text=True,
+            start_new_session=True
             # No capturamos stdout/stderr para evitar bloqueo de buffer
         )
         
@@ -116,8 +155,37 @@ class TestIntegracionServidor(unittest.TestCase):
         """
         if cls.server_process:
             print("\nDeteniendo el servidor...")
+            
+            # Intentar terminación normal del proceso principal
             cls.server_process.terminate()
-            cls.server_process.wait()
+            try:
+                cls.server_process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                # Plan B: matar grupo de procesos
+                try:
+                    pgid = os.getpgid(cls.server_process.pid)
+                    os.killpg(pgid, signal.SIGTERM)
+                    time.sleep(1)
+                    if cls.server_process.poll() is None:
+                        os.killpg(pgid, signal.SIGKILL)
+                except Exception:
+                    pass
+                finally:
+                    cls.server_process.kill()
+                    cls.server_process.wait()
+            
+            # Plan C: buscar y matar todos los procesos que usen el puerto 8080
+            cls.kill_port_processes(TEST_PORT)
+            
+            # Asegurar que el proceso principal esté muerto
+            try:
+                if cls.server_process.poll() is None:
+                    cls.server_process.kill()
+                    cls.server_process.wait(timeout=2)
+            except (subprocess.TimeoutExpired, ProcessLookupError):
+                pass
+            
+            time.sleep(0.5)  # dar tiempo al SO a liberar el puerto
             
             try:
                 cls.data_table.delete_item(Key={'id': cls.test_set_id})
@@ -238,9 +306,6 @@ class TestIntegracionServidor(unittest.TestCase):
         expected_id = "UADER-FCYT-IS2" 
         self.assertEqual(observer_json.get('id'), expected_id, "El observador no recibió los datos correctos.")
         print("... (Notificación de observador recibida y validada)")
-            
-
-
 
     def test_cp05_get_inexistente(self):
         """ CP-05: get con ID inexistente (Error). """
@@ -279,7 +344,25 @@ class TestIntegracionServidor(unittest.TestCase):
         # 1. Detener el servidor temporalmente
         print("... (deteniendo servidor temporalmente)")
         self.server_process.terminate()
-        self.server_process.wait()
+        try:
+            self.server_process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            # Forzar terminación si no responde
+            try:
+                pgid = os.getpgid(self.server_process.pid)
+                os.killpg(pgid, signal.SIGTERM)
+                time.sleep(0.5)
+                if self.server_process.poll() is None:
+                    os.killpg(pgid, signal.SIGKILL)
+            except Exception:
+                pass
+            finally:
+                self.server_process.kill()
+                self.server_process.wait()
+        
+        # Asegurar que el puerto esté libre antes de continuar
+        self.kill_port_processes(TEST_PORT)
+        time.sleep(0.5)
         
         # 2. Intentar conectar (debe fallar rápido)
         result = self.run_client(INPUT_GET)
@@ -289,7 +372,8 @@ class TestIntegracionServidor(unittest.TestCase):
         print("... (reiniciando servidor)")
         self.server_process = subprocess.Popen(
             [PYTHON_EXE, SERVER_SCRIPT, '-p', str(TEST_PORT)],
-            text=True
+            text=True,
+            start_new_session=True
         )
         time.sleep(3) # Darle tiempo para reiniciar
         self.assertIsNone(self.server_process.poll(), "El servidor no pudo reiniciarse después de la prueba de caída.")
