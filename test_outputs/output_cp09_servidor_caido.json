@@ -1,0 +1,4 @@
+{
+    "status": "SERVER_DOWN",
+    "error": "Socket Error: [Errno 111] Connection refused\n"
+}

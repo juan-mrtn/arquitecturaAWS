@@ -38,6 +38,26 @@ INPUT_MALFORMED = os.path.join(TEST_OUTPUT_DIR, 'input_malformed.json')
 # (CP-08)
 INPUT_GET_NO_ID = os.path.join(TEST_OUTPUT_DIR, 'input_get_no_id.json')
 
+# (CP-01..CP-09) archivos de salida
+OUTPUT_CP01_GET = os.path.join(TEST_OUTPUT_DIR, 'output_cp01_get.json')
+OUTPUT_CP02_SET = os.path.join(TEST_OUTPUT_DIR, 'output_cp02_set.json')
+OUTPUT_CP03_LIST = os.path.join(TEST_OUTPUT_DIR, 'output_cp03_list.json')
+OUTPUT_CP04_SET = os.path.join(TEST_OUTPUT_DIR, 'output_cp04_set.json')  # además del observer_output.json existente
+OUTPUT_CP05_GET_INEX = os.path.join(TEST_OUTPUT_DIR, 'output_cp05_get_inexistente.json')
+OUTPUT_CP06_NO_MIN = os.path.join(TEST_OUTPUT_DIR, 'output_cp06_sin_datos_minimos.json')
+OUTPUT_CP07_MALFORM = os.path.join(TEST_OUTPUT_DIR, 'output_cp07_json_malformado.json')
+OUTPUT_CP08_GET_SIN_ID = os.path.join(TEST_OUTPUT_DIR, 'output_cp08_get_sin_id.json')
+OUTPUT_CP09_SERVER_DOWN = os.path.join(TEST_OUTPUT_DIR, 'output_cp09_servidor_caido.json')
+
+def save_output(path, obj):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as f:
+            json.dump(obj, f, indent=4, default=json_default)
+    except Exception as e:
+        print(f"Warning: no se pudo guardar el output en {path}: {e}")
+
+
 
 # Configuración del servidor
 TEST_HOST = '127.0.0.1'
@@ -225,6 +245,7 @@ class TestIntegracionServidor(unittest.TestCase):
         result = self.run_client(INPUT_GET)
         self.assertEqual(result.get('status'), 'OK', f"Resultado: {result}")
         self.assertEqual(result['data'].get('id'), 'UADER-FCYT-IS2', f"Resultado: {result}")
+        save_output(OUTPUT_CP01_GET, result)
 
     def test_cp02_set_exitoso(self):
         """ CP-02: set exitoso (Camino feliz). """
@@ -232,6 +253,7 @@ class TestIntegracionServidor(unittest.TestCase):
         result = self.run_client(INPUT_SET_TEST_ID) 
         self.assertEqual(result.get('status'), 'OK', f"Resultado: {result}")
         self.assertEqual(result['data'].get('id'), self.test_set_id, f"Resultado: {result}")
+        save_output(OUTPUT_CP02_SET, result)
 
     def test_cp03_list_exitoso(self):
         """ CP-03: list exitoso (Camino feliz). """
@@ -239,6 +261,7 @@ class TestIntegracionServidor(unittest.TestCase):
         result = self.run_client(INPUT_LIST)
         self.assertEqual(result.get('status'), 'OK', f"Resultado: {result}")
         self.assertIsInstance(result['data'], list, f"Resultado: {result}")
+        save_output(OUTPUT_CP03_LIST, result)
 
 # (Asegúrate de que las constantes como OUTPUT_OBSERVER, PYTHON_EXE,
 # OBSERVER_SCRIPT, TEST_HOST, TEST_PORT, INPUT_SET, etc., estén definidas
@@ -266,6 +289,7 @@ class TestIntegracionServidor(unittest.TestCase):
             # 4. Ejecuta el SET
             set_result = self.run_client(INPUT_SET)
             self.assertEqual(set_result.get('status'), 'OK', f"La operación SET falló: {set_result}")
+            save_output(OUTPUT_CP04_SET, set_result)
             
             # 5. Espera a que la notificación llegue y se escriba en disco
             time.sleep(6) # Aumentamos ligeramente a 4s por seguridad de timing
@@ -313,6 +337,7 @@ class TestIntegracionServidor(unittest.TestCase):
         result = self.run_client(INPUT_GET_INEXISTENTE)
         self.assertEqual(result.get('status'), 'Error', f"Resultado: {result}")
         self.assertIn("Item not found", result.get('message', ''), f"Resultado: {result}")
+        save_output(OUTPUT_CP05_GET_INEX, result)
 
     def test_cp06_requerimiento_sin_datos_minimos(self):
         """ CP-06: set con JSON sin datos (Requerimiento sin datos mínimos). """
@@ -320,6 +345,7 @@ class TestIntegracionServidor(unittest.TestCase):
         result = self.run_client(INPUT_SET_NO_ACTION) # Este JSON no tiene "ACTION"
         self.assertEqual(result.get('status'), 'Error', f"Resultado: {result}")
         self.assertIn("Missing UUID or ACTION", result.get('message', ''), f"Resultado: {result}")
+        save_output(OUTPUT_CP06_NO_MIN, result)
 
     def test_cp07_json_malformado(self):
         """ CP-07: singletonclient con JSON malformado (Argumentos malformados). """
@@ -328,6 +354,7 @@ class TestIntegracionServidor(unittest.TestCase):
         # El servidor (con el buffer fix) detectará el JSON roto y enviará un error
         self.assertEqual(result.get('status'), 'INVALID_JSON_OUTPUT', f"Resultado: {result}")
         self.assertIn("not valid JSON", result.get('error', ''), "El mensaje de error no indica JSON no válido.")
+        save_output(OUTPUT_CP07_MALFORM, result)
 
     def test_cp08_get_sin_id(self):
         """ CP-08: singletonclient con ID faltante en get (Argumentos malformados). """
@@ -336,6 +363,7 @@ class TestIntegracionServidor(unittest.TestCase):
         # La lógica de handle_get() espera un "ID" que será None
         self.assertEqual(result.get('status'), 'Error', f"Resultado: {result}")
         self.assertIn("Item not found", result.get('message', ''), f"Resultado: {result}")
+        save_output(OUTPUT_CP08_GET_SIN_ID, result)
 
     def test_cp09_servidor_caido_cliente_singleton(self):
         """ CP-09: Manejo en clientes (singleton) de server aplicativo caido. """
@@ -367,6 +395,7 @@ class TestIntegracionServidor(unittest.TestCase):
         # 2. Intentar conectar (debe fallar rápido)
         result = self.run_client(INPUT_GET)
         self.assertEqual(result.get('status'), 'SERVER_DOWN', f"Resultado: {result}")
+        save_output(OUTPUT_CP09_SERVER_DOWN, result)
         
         # 3. Reiniciar el servidor para las pruebas restantes y tearDownClass
         print("... (reiniciando servidor)")
