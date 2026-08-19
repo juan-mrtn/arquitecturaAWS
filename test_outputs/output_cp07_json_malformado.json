@@ -1,0 +1,5 @@
+{
+    "status": "INVALID_JSON_OUTPUT",
+    "output": "",
+    "error": "Error: Input file 'test_outputs/input_malformed.json' is not valid JSON.\n"
+}

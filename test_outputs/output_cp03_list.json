@@ -1,0 +1,14 @@
+{
+    "status": "OK",
+    "data": [
+        {
+            "telefono": "03442 43-9999",
+            "web": "http://www.fcyt.uader.edu.ar",
+            "id": "UADER-FCYT-IS2"
+        },
+        {
+            "data": "Dato de prueba de integracion",
+            "id": "test-item-ebd10ab1-4138-4349-8943-8b1f708420a9"
+        }
+    ]
+}
