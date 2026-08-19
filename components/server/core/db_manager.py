@@ -2,6 +2,7 @@
 # Implementa el patrón Singleton para gestionar el acceso a DynamoDB
 import boto3
 import logging
+import os
 import uuid
 from datetime import datetime
 
@@ -12,8 +13,12 @@ class DatabaseManager:
         if cls._instance is None:
             cls._instance = super(DatabaseManager, cls).__new__(cls)
             try:
-                # Configurar Boto3. Asume que AWS CLI ya está configurado
-                cls._instance.dynamodb = boto3.resource('dynamodb')
+                endpoint_url = os.getenv('DYNAMODB_ENDPOINT_URL')
+                cls._instance.dynamodb = boto3.resource(
+                    'dynamodb',
+                    endpoint_url=endpoint_url,
+                    region_name='us-east-1'  # Cambia esto según tu configuración
+                )
                 cls._instance.corporate_data_table = cls._instance.dynamodb.Table('CorporateData')
                 cls._instance.corporate_log_table = cls._instance.dynamodb.Table('CorporateLog')
                 logging.info("Singleton DatabaseManager instance created. Connected to DynamoDB.")

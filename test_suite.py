@@ -13,6 +13,12 @@ import uuid
 import signal
 from decimal import Decimal
 
+# --- Forzar SDK de AWS hacia Floci ---
+os.environ['AWS_ENDPOINT_URL'] = 'http://localhost:4566'
+os.environ['AWS_ACCESS_KEY_ID'] = 'test'
+os.environ['AWS_SECRET_ACCESS_KEY'] = 'test'
+os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'
+
 # --- Configuración de Pruebas ---
 SERVER_SCRIPT = os.path.join('components', 'server', 'singletonproxyobserver.py')
 CLIENT_SCRIPT = os.path.join('components', 'client', 'singletonclient.py')
@@ -160,6 +166,9 @@ class TestIntegracionServidor(unittest.TestCase):
             dynamodb = boto3.resource('dynamodb')
             cls.log_table = dynamodb.Table('CorporateLog')
             cls.data_table = dynamodb.Table('CorporateData')
+
+            cls.log_table.wait_until_exists()
+            cls.data_table.wait_until_exists()
             cls.log_table.scan()
         except Exception as e:
             cls.server_process.terminate()
